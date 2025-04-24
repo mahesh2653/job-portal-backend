@@ -1,5 +1,7 @@
 import ApplicationModel from "../model/application.model";
 import IApplication from "../types/application.type";
+import mongoose from "mongoose";
+import { IApplicationStatus } from "../types/jobs.type";
 
 export default class ApplicationService {
   // Create a new application
@@ -8,7 +10,7 @@ export default class ApplicationService {
     return application;
   };
 
-  // Get an application by ID
+  // Get application by ID
   static getApplication = async (id: string) => {
     const application = await ApplicationModel.findById(id)
       .populate("jobId", "title company")
@@ -16,21 +18,7 @@ export default class ApplicationService {
     return application;
   };
 
-  // Get all applications for an employer (by job postedBy)
-  static getEmployerApplications = async (postedBy: string) => {
-    const applications = await ApplicationModel.find()
-      .populate({
-        path: "jobId",
-        match: { postedBy },
-        select: "title company",
-      })
-      .populate("userId", "name email")
-      .lean();
-    // Filter out applications where jobId is null (due to match)
-    return applications.filter((app) => app.jobId);
-  };
-
-  // Get all applications for a job seeker (by userId)
+  // Get all applications for a job seeker
   static getJobSeekerApplications = async (userId: string) => {
     const applications = await ApplicationModel.find({ userId })
       .populate("jobId", "title company")
@@ -38,7 +26,29 @@ export default class ApplicationService {
     return applications;
   };
 
-  // Update an application by ID
+  // Get all applications for employer based on postedBy in job
+  static getEmployerApplications = async (postedBy: string) => {
+    const applications = await ApplicationModel.find()
+      .populate({
+        path: "jobId",
+        match: { postedBy: new mongoose.Types.ObjectId(postedBy) },
+        select: "title company",
+      })
+      .populate("userId", "name email")
+      .lean();
+    return applications.filter((app) => app.jobId);
+  };
+
+  // Get all applications (optionally filterable)
+  static getApplicationsByAny = async (filter: object = {}) => {
+    const applications = await ApplicationModel.find(filter)
+      .populate("jobId", "title company")
+      .populate("userId", "name email")
+      .lean();
+    return applications;
+  };
+
+  // Update an application
   static updateApplication = async (
     id: string,
     data: Partial<IApplication>
@@ -49,18 +59,143 @@ export default class ApplicationService {
     return application;
   };
 
-  // Delete an application by ID
+  // Delete an application
   static deleteApplication = async (id: string) => {
     const application = await ApplicationModel.findByIdAndDelete(id);
     return application;
   };
 
-  // Get applications by any filter
-  static getApplicationsByAny = async (filter: object) => {
-    const applications = await ApplicationModel.find(filter)
-      .populate("jobId", "title company")
-      .populate("userId", "name email")
-      .lean();
-    return applications;
+  static deleteApplicationByJobId = async (jobId: string) => {
+    const application = await ApplicationModel.deleteMany({ jobId });
+    return application;
+  };
+
+  // Dashboard summary: Total applications, status breakdown
+  static getDashboardStats = async (postedBy: string) => {
+    const matchPostedJobs = {
+      $lookup: {
+        from: "application",
+        localField: "jobId",
+        foreignField: "_id",
+        as: "job",
+      },
+    };
+
+    const unwindJob = { $unwind: "$job" };
+    const matchPostedBy = {
+      $match: { "job.postedBy": new mongoose.Types.ObjectId(postedBy) },
+    };
+
+    const groupByStatus = {
+      $group: {
+        _id: "$status",
+        count: { $sum: 1 },
+      },
+    };
+
+    const totalApplications = await ApplicationModel.aggregate([
+      matchPostedJobs,
+      unwindJob,
+      matchPostedBy,
+      groupByStatus,
+    ]);
+
+    const formattedStats = totalApplications.reduce((acc, curr) => {
+      acc[curr._id] = curr.count;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const total = totalApplications.reduce((sum, curr) => sum + curr.count, 0);
+
+    return {
+      totalApplications: total,
+      statusBreakdown: formattedStats,
+    };
+  };
+
+  static getApplicationStatsForPostedJobs = async (userId: string) => {
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+
+    const stats = await ApplicationModel.aggregate([
+      {
+        $lookup: {
+          from: "jobs", // collection name in MongoDB (make sure it's correct)
+          localField: "jobId",
+          foreignField: "_id",
+          as: "jobInfo",
+        },
+      },
+      { $unwind: "$jobInfo" }, // deconstruct the jobInfo array
+
+      // Filter only jobs where postedBy = current userId
+      {
+        $match: {
+          "jobInfo.postedBy": objectUserId,
+        },
+      },
+
+      // Group by application status
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Format stats for consistent output
+    const formattedStats = stats.reduce(
+      (acc, curr) => {
+        acc[curr._id] = curr.count;
+        return acc;
+      },
+      { PENDING: 0, ACCEPTED: 0, REJECTED: 0 }
+    );
+
+    return formattedStats;
+  };
+
+  // Get application stats for a specific user
+  static getApplicationStatsByUser = async (userId: string) => {
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+
+    // 1. Application stats by status
+    const stats = await ApplicationModel.aggregate([
+      {
+        $match: { userId: objectUserId },
+      },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const formattedStats = stats.reduce(
+      (acc, curr) => {
+        acc[curr._id] = curr.count;
+        return acc;
+      },
+      { PENDING: 0, ACCEPTED: 0, REJECTED: 0 }
+    );
+
+    // 2. Total count of applications
+    const total = await ApplicationModel.countDocuments({
+      userId: objectUserId,
+    });
+
+    // 3. All applications with job details (title and company)
+    const applications = await ApplicationModel.find({ userId: objectUserId })
+      .populate("jobId", "title company") // populate job title and company
+      .populate("userId", "name email"); // optional: include user info too
+
+    return {
+      stats: {
+        total,
+        ...formattedStats,
+      },
+      applications,
+    };
   };
 }

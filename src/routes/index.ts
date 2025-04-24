@@ -15,7 +15,7 @@ const allRoutes = [
     route: jobRouter,
   },
   {
-    name: "/application",
+    name: "/applications",
     route: applicationRouter,
   },
 ];

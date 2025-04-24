@@ -8,6 +8,8 @@ interface IJob {
   jobType: string;
   category: string;
   postedBy: mongoose.Types.ObjectId;
+  companyInfo: string;
+  salary: { from: string; to: string };
 }
 
 export enum IJobType {
@@ -28,6 +30,13 @@ export enum ICategory {
   PRODUCT_MANAGEMENT = "PRODUCT_MANAGEMENT",
   CUSTOMER_SUPPORT = "CUSTOMER_SUPPORT",
   OPERATIONS = "OPERATIONS",
+}
+
+export enum IApplicationStatus {
+  PENDING = "PENDING",
+  ACCEPTED = "ACCEPTED",
+  REJECTED = "REJECTED",
+  HOLD = "HOLD",
 }
 
 export default IJob;
