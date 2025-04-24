@@ -6,6 +6,7 @@ import connectionDB from "./data-souece";
 import logger from "./utils/winston";
 import routerApi from "./routes";
 import errorHandlingMiddleware from "./middleware/error-handler";
+import morganMiddleware from "./middleware/morgan";
 
 // Load environment variables
 dotenv.config();
@@ -18,6 +19,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(morganMiddleware);
 
 // Health check route
 app.get("/", (req: Request, res: Response) => {

@@ -5,6 +5,8 @@ import userSchema, { loginSchema } from "../validator/user.validator";
 import jwt from "jsonwebtoken";
 import checkEnvVariable from "../utils/checkEnvVariable";
 import ApiError from "../utils/api-error";
+import ApplicationService from "../services/application.service";
+import successResponse from "../utils/successResponse";
 
 export default class UserController {
   static registerUser = async (
@@ -13,33 +15,42 @@ export default class UserController {
     next: NextFunction
   ) => {
     try {
-      const validate = await userSchema.validateAsync(req.body);
-      const { password, email } = validate;
+      // Validate incoming request data
+      const validatedData = await userSchema.validateAsync(req.body);
+      const { email, password } = validatedData;
 
-      const userData = await UserService.getUserByUserName(email);
-
-      if (userData) {
-        throw Error("User already exist");
-      }
-
-      const user = await UserService.createUser({
-        ...validate,
-        password: await hashPassword(password),
-      });
-      if (!user) {
-        res.json({ status: 400, message: "error while creating a user" });
+      // Check if user already exists
+      const existingUser = await UserService.getOneUserByAny({ email });
+      if (existingUser) {
+        next(ApiError.customError(409, "User already exists"));
         return;
       }
+
+      // Hash password and create new user
+      const newUser = await UserService.createUser({
+        ...validatedData,
+        password: await hashPassword(password),
+      });
+
+      if (!newUser) {
+        res.status(400).json({
+          status: 400,
+          message: "Error while creating user",
+        });
+        return;
+      }
+
+      // Successful response
       res.status(201).json({
         status: 201,
-        message: "User created successfully",
-        data: user,
+        message: "User registered successfully",
+        data: newUser,
       });
     } catch (error) {
+      // Forward error to error handler middleware
       next(error);
     }
   };
-
   static loginUser = async (
     req: Request,
     res: Response,
@@ -50,7 +61,7 @@ export default class UserController {
 
       const { email, password } = validate;
 
-      const userData = await UserService.getUserByUserName(email);
+      const userData = await UserService.getOneUserByAny({ email });
       if (!userData) {
         next(ApiError.customError(404, "User Not found"));
         return;
@@ -59,9 +70,8 @@ export default class UserController {
         throw Error("Before login register first ");
       }
       const { name, _id } = userData;
-
       const value = await verifyPassword(password, userData.password);
-      if (!(await verifyPassword(password, userData.password))) {
+      if (!value) {
         res
           .status(403)
           .json({ status: 403, message: "Invalid email and password" });
@@ -73,6 +83,8 @@ export default class UserController {
         name: name,
         username: userData.email,
         id: _id,
+        role: userData.role,
+        profile: userData.profile,
       };
 
       const token = jwt.sign(payload, checkEnvVariable("JWT_SECRET"), {
@@ -126,6 +138,20 @@ export default class UserController {
         message: "All users",
         data: users,
       });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  static getUserById = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const userId = req.params.id as string;
+      const data = await ApplicationService.getApplicationStatsByUser(userId);
+      res.json(successResponse(200, "Get applicaiton data successfully", data));
     } catch (error) {
       next(error);
     }
