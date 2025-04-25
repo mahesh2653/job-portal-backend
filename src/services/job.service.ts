@@ -16,7 +16,9 @@ export default class JobService {
 
   // Get a job by ID with employer info
   static getJob = async (id: string) => {
-    return await JobModel.findById(id).populate("postedBy", "name company");
+    return await JobModel.findById(id)
+      .populate("postedBy", "name company")
+      .lean();
   };
 
   // Get all jobs with optional search, filters, and pagination

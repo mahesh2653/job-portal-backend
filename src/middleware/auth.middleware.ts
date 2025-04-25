@@ -3,13 +3,9 @@ import jwt from "jsonwebtoken";
 import UserModel from "../model/user.model";
 import ApiError from "../utils/api-error";
 
-export interface AuthRequest extends Request {
-  user?: any;
-}
-
 // Single middleware that authenticates and checks roles
 const RBAC = (allowedRoles: string[]) => {
-  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     const token = req.header("Authorization")?.replace("Bearer ", "");
     if (!token) {
       next(ApiError.unAuthorized());
@@ -33,7 +29,7 @@ const RBAC = (allowedRoles: string[]) => {
         return;
       }
 
-      req.user = user;
+      req.user = decoded;
       next();
     } catch (error) {
       next(error);
