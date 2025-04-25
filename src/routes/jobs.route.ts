@@ -13,7 +13,7 @@ jobRouter.get("/", JobController.getJobs);
 
 jobRouter.get("/employer/:id", JobController.getJobsByEmployer);
 
-jobRouter.get("/:id", JobController.getJobById);
+jobRouter.get("/:id", RBAC([EMPLOYER, JOB_SEEKER]), JobController.getJobById);
 
 jobRouter.put("/:id", JobController.updateJob);
 

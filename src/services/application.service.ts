@@ -2,6 +2,7 @@ import ApplicationModel from "../model/application.model";
 import IApplication from "../types/application.type";
 import mongoose from "mongoose";
 import { IApplicationStatus } from "../types/jobs.type";
+import JobModel from "../model/jobs.model";
 
 export default class ApplicationService {
   // Create a new application
@@ -48,6 +49,10 @@ export default class ApplicationService {
     return applications;
   };
 
+  static getOneApplicationByAny = async (filter: object) => {
+    const application = await ApplicationModel.findOne(filter).lean();
+    return application;
+  };
   // Update an application
   static updateApplication = async (
     id: string,
@@ -155,7 +160,139 @@ export default class ApplicationService {
     return formattedStats;
   };
 
+  // static getApplicationsWithStatsForPostedJobs = async (userId: string) => {
+  //   const objectUserId = new mongoose.Types.ObjectId(userId);
+
+  //   const result = await ApplicationModel.aggregate([
+  //     {
+  //       $lookup: {
+  //         from: "jobs",
+  //         localField: "jobId",
+  //         foreignField: "_id",
+  //         as: "jobInfo",
+  //       },
+  //     },
+  //     { $unwind: "$jobInfo" },
+
+  //     // Filter to include only applications to jobs posted by the given user
+  //     {
+  //       $match: {
+  //         "jobInfo.postedBy": objectUserId,
+  //       },
+  //     },
+
+  //     // Join with User collection to get applicant details
+  //     {
+  //       $lookup: {
+  //         from: "users",
+  //         localField: "userId",
+  //         foreignField: "_id",
+  //         as: "userInfo",
+  //       },
+  //     },
+  //     { $unwind: "$userInfo" },
+
+  //     {
+  //       $project: {
+  //         _id: 0,
+  //         name: "$userInfo.name",
+  //         email: "$userInfo.email",
+  //         message: 1,
+  //         status: 1,
+  //         createdAt: 1,
+  //         companyName: "$jobInfo.company",
+  //         title: "$jobInfo.title",
+  //       },
+  //     },
+  //   ]);
+
+  //   // Status statistics
+  //   const stats = result.reduce(
+  //     (acc, curr) => {
+  //       acc[curr.status] = (acc[curr.status] || 0) + 1;
+  //       return acc;
+  //     },
+  //     { PENDING: 0, ACCEPTED: 0, REJECTED: 0 }
+  //   );
+
+  //   // Total jobs posted by this user
+  //   const total = await JobModel.countDocuments({ postedBy: objectUserId });
+
+  //   return {
+  //     total,
+  //     stats,
+  //     applications: result, // Each application is now a clean object
+  //   };
+  // };
+
   // Get application stats for a specific user
+
+  static getApplicationsWithStatsForPostedJobs = async (userId: string) => {
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+
+    const result = await ApplicationModel.aggregate([
+      // Join with Job collection
+      {
+        $lookup: {
+          from: "jobs",
+          localField: "jobId",
+          foreignField: "_id",
+          as: "jobInfo",
+        },
+      },
+      {
+        $unwind: "$jobInfo",
+      },
+
+      // Filter to include only applications to jobs posted by the given user
+      {
+        $match: {
+          "jobInfo.postedBy": objectUserId,
+        },
+      },
+
+      // Join with User collection to get applicant details
+      {
+        $lookup: {
+          from: "users",
+          localField: "userId",
+          foreignField: "_id",
+          as: "userInfo",
+        },
+      },
+      {
+        $unwind: "$userInfo",
+      },
+
+      // Project only necessary fields (optional - adjust as needed)
+      {
+        $project: {
+          _id: 1,
+          message: 1,
+          status: 1,
+          createdAt: 1,
+          job: "$jobInfo",
+          applicant: "$userInfo",
+        },
+      },
+    ]);
+
+    // Optionally, generate stats based on status
+    const stats = result.reduce(
+      (acc, curr) => {
+        acc[curr.status] = (acc[curr.status] || 0) + 1;
+        return acc;
+      },
+      { PENDING: 0, ACCEPTED: 0, REJECTED: 0 }
+    );
+
+    const total = await JobModel.countDocuments({ postedBy: objectUserId });
+    return {
+      total,
+      applications: result,
+      stats,
+    };
+  };
   static getApplicationStatsByUser = async (userId: string) => {
     const objectUserId = new mongoose.Types.ObjectId(userId);
 

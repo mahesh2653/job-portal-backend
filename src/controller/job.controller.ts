@@ -1,6 +1,5 @@
 import { NextFunction, Request, Response } from "express";
 import JobService from "../services/job.service";
-import { AuthRequest } from "../middleware/auth.middleware";
 import successResponse from "../utils/successResponse";
 import jobSchema from "../validator/jobs.validator";
 import ApiError from "../utils/api-error";
@@ -8,7 +7,7 @@ import ApplicationService from "../services/application.service";
 
 export default class JobController {
   static createJob = async (
-    req: AuthRequest,
+    req: Request,
     res: Response,
     next: NextFunction
   ) => {
@@ -33,10 +32,19 @@ export default class JobController {
     next: NextFunction
   ) => {
     try {
+      const applicaiton = await ApplicationService.getOneApplicationByAny({
+        jobId: req.params.id,
+        userId: req.user.id,
+      });
       const job = await JobService.getJob(req.params.id);
 
       if (!job) return next(ApiError.customError(404, "Job not found"));
-      res.json(successResponse(200, "Job fetched successfully", job));
+      res.json(
+        successResponse(200, "Job fetched successfully", {
+          ...job,
+          applied: applicaiton ? true : false,
+        })
+      );
     } catch (err) {
       next(err);
     }
@@ -114,10 +122,10 @@ export default class JobController {
     next: NextFunction
   ) => {
     try {
-      const job = await ApplicationService.getApplicationStatsForPostedJobs(
-        req.params.id
-      );
-
+      const job =
+        await ApplicationService.getApplicationsWithStatsForPostedJobs(
+          req.params.id
+        );
       res.json(successResponse(200, "Jobs fetched successfully", job));
     } catch (err) {
       next(err);
